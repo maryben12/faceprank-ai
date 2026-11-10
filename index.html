@@ -132,7 +132,7 @@ function drawWarpedFace(target, blendshapes = []) {
   const bounds = points => {
     const valid = points.filter(p => p && Number.isFinite(p.x) && Number.isFinite(p.y));
     return {
-      minX: Math.min(...valid.map(p=>p.x)), maxX: Math.max(...valid.map(p=>p=>p.x)),
+      minX: Math.min(...valid.map(p=>p.x)), maxX: Math.max(...valid.map(p=>p.x)),
       minY: Math.min(...valid.map(p=>p.y)), maxY: Math.max(...valid.map(p=>p.y))
     };
   };
