@@ -130,6 +130,22 @@
         }
       });
   </script>
+<script type="module">
+  import {
+    initializeFaceTracking,
+    trackFace
+  } from "./face.js";
 
+  const startButton = document.getElementById("startCamera");
+
+  startButton.addEventListener("click", async () => {
+    const ready = await initializeFaceTracking();
+
+    if (ready) {
+      document.getElementById("status").textContent =
+        "AI tracker loaded! Start your webcam.";
+    }
+  });
+</script>
 </body>
 </html>
