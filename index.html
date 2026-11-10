@@ -5,23 +5,28 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>FacePrank AI</title>
 <style>
-* { box-sizing: border-box; }
+* { box-sizing:border-box; }
 body { background:#101323; color:white; font-family:Arial,sans-serif; text-align:center; padding:20px; }
-.container { max-width:1180px; margin:25px auto; padding:24px; background:#1c2138; border-radius:18px; }
-.preview > div:last-child { max-width:760px; width:100%; }
-.preview > div:nth-child(1), .preview > div:nth-child(2) { max-width:300px; }
-.preview > div:last-child .media-wrap { width:100%; min-height:360px; aspect-ratio:4 / 3; background:#080b16; border-radius:14px; overflow:hidden; }
-#resultCanvas { width:100%; height:100%; object-fit:contain; }
+.container { max-width:1240px; margin:25px auto; padding:24px; background:#1c2138; border-radius:18px; }
 button { background:#7465ed; color:white; border:0; padding:13px 20px; margin:8px; border-radius:8px; cursor:pointer; }
-.preview { display:flex; justify-content:center; gap:20px; flex-wrap:wrap; }
-.preview > div { width:100%; max-width:340px; }
-img, video { width:100%; border-radius:12px; }
-.media-wrap { position:relative; width:100%; }
-.media-wrap:has(#resultCanvas) { aspect-ratio:4 / 3; background:#0b0e19; border-radius:12px; overflow:hidden; }
-#resultCanvas { display:block; }
-.media-wrap canvas { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+.preview { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; align-items:start; }
+.preview > div { width:100%; max-width:none; min-width:0; }
+.preview > div:last-child { grid-column:1 / -1; width:100%; max-width:none; }
+.preview > div:last-child .media-wrap { width:100%; max-width:920px; margin:0 auto; min-height:0; height:auto; aspect-ratio:auto; background:#080b16; border-radius:14px; overflow:hidden; }
+.media-wrap { position:relative; width:100%; background:#0b0e19; border-radius:12px; overflow:hidden; }
+.media-wrap:has(#resultCanvas) { aspect-ratio:auto; height:auto; min-height:0; }
+img, video { display:block; width:100%; height:auto; border-radius:12px; }
+#resultCanvas { position:relative; inset:auto; display:block; width:100%; height:auto; max-height:760px; object-fit:contain; margin:0 auto; pointer-events:none; }
+.media-wrap canvas:not(#resultCanvas) { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
 #status { color:#55edaa; min-height:22px; }
 .hint { color:#c8c9d8; font-size:14px; line-height:1.5; }
+@media (max-width:700px) {
+ body { padding:10px; }
+ .container { padding:14px; }
+ .preview { grid-template-columns:1fr; }
+ .preview > div:last-child { grid-column:auto; }
+ .preview > div:last-child .media-wrap { max-width:100%; }
+}
 </style>
 </head>
 <body>
@@ -48,9 +53,9 @@ img, video { width:100%; border-radius:12px; }
       <p class="hint">Green dots show detected facial landmarks.</p>
     </div>
     <div>
-      <h3>Live FacePrank Preview</h3>
+      <h3>Live FacePrank Preview — Main Screen</h3>
       <div class="media-wrap"><canvas id="resultCanvas"></canvas></div>
-      <p class="hint">Your uploaded face follows your webcam landmarks.</p>
+      <p class="hint">Large portrait preview. Facial movement is mapped onto the uploaded face; hair and body remain from the original photo.</p>
     </div>
   </div>
   <h2>2. Start Face Tracking</h2>
@@ -217,6 +222,7 @@ document.getElementById("photo").addEventListener("change", async event => {
     resultCanvas.width = Math.max(1, Math.round(width * outputScale));
     resultCanvas.height = Math.max(1, Math.round(height * outputScale));
     resultCanvas.style.aspectRatio = width + " / " + height;
+    resultCanvas.style.height = "auto";
     resultCtx.clearRect(0, 0, resultCanvas.width, resultCanvas.height);
     resultCtx.drawImage(imagePreview, 0, 0, resultCanvas.width, resultCanvas.height);
     photoStatus.textContent = "Photo loaded. Start AI tracking to analyze the uploaded face.";
