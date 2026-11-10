@@ -340,7 +340,10 @@ function detectLoop() {
       } else {
         trackingCtx.clearRect(0, 0, width, height);
         resultCtx.clearRect(0, 0, resultCanvas.width, resultCanvas.height);
-        smoothedLandmarks = null;\n        smoothedJawOpen = 0;\n        neutralFaceBox = null;\n        status.textContent = "Looking for your face...";
+        smoothedLandmarks = null;
+        smoothedJawOpen = 0;
+        neutralFaceBox = null;
+        status.textContent = "Looking for your face...";
       }
     } catch (error) {
       console.error(error);
