@@ -77,7 +77,10 @@ let photoLandmarks = null;
 let meshTriangles = null;
 
 function triangulate(points) {
-  const pts = points.map((p, i) => ({ x: p.x, y: p.y, i }));
+  const pts = points
+    .map((p, i) => p && Number.isFinite(p.x) && Number.isFinite(p.y) ? ({ x: p.x, y: p.y, i }) : null)
+    .filter(Boolean);
+  if (pts.length < 3) throw new Error("Not enough valid face landmarks to build a mesh.");
   let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
   for (const p of pts) { minX=Math.min(minX,p.x); minY=Math.min(minY,p.y); maxX=Math.max(maxX,p.x); maxY=Math.max(maxY,p.y); }
   const d=Math.max(maxX-minX,maxY-minY)||1, mx=(minX+maxX)/2, my=(minY+maxY)/2;
@@ -95,7 +98,9 @@ function triangulate(points) {
   for(let i=0;i<pts.length;i++) {
     const p=all[i], bad=[];
     for(let j=0;j<triangles.length;j++) {
-      const t=triangles[j], c=circle(all[t[0]],all[t[1]],all[t[2]]);
+      const t=triangles[j];
+      if (!t || t.some(index => !Number.isInteger(index) || !all[index])) continue;
+      const c=circle(all[t[0]],all[t[1]],all[t[2]]);
       if((p.x-c.x)**2+(p.y-c.y)**2<=c.r2+1e-8) bad.push(j);
     }
     const edges=[];
@@ -181,9 +186,15 @@ function analyzeUploadedPhoto() {
     const result = detectPhoto(imagePreview);
     if (result && result.faceLandmarks && result.faceLandmarks.length) {
       photoLandmarks = result.faceLandmarks[0];
-      meshTriangles = triangulate(photoLandmarks);
+      // Draw the detector result first so triangulation cannot prevent face confirmation.
       drawLandmarks(photoCtx, photoLandmarks, photoCanvas.width, photoCanvas.height);
-      photoStatus.textContent = "Face detected in uploaded photo (" + result.faceLandmarks[0].length + " landmarks).";
+      try {
+        meshTriangles = triangulate(photoLandmarks);
+      } catch (meshError) {
+        console.warn("Face mesh triangulation failed:", meshError);
+        meshTriangles = [];
+      }
+      photoStatus.textContent = "Face detected in uploaded photo (" + photoLandmarks.length + " landmarks).";
     } else {
       photoLandmarks = null;
       meshTriangles = null;
