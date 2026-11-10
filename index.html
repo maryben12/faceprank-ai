@@ -1,0 +1,135 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FacePrank AI</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #101323;
+      color: white;
+      text-align: center;
+      padding: 25px 15px;
+    }
+    h1 { color: #8b80ff; }
+    .container {
+      max-width: 850px;
+      margin: 25px auto;
+      background: #1c2138;
+      padding: 25px;
+      border-radius: 18px;
+    }
+    .upload {
+      border: 2px dashed #7774c9;
+      padding: 25px;
+      border-radius: 12px;
+      margin: 20px 0;
+    }
+    button {
+      background: #7465ed;
+      border: 0;
+      padding: 13px 22px;
+      color: white;
+      border-radius: 9px;
+      cursor: pointer;
+      margin: 8px;
+    }
+    img, video {
+      width: 100%;
+      max-width: 320px;
+      border-radius: 12px;
+      background: #080b15;
+    }
+    .preview {
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+      flex-wrap: wrap;
+      margin-top: 20px;
+    }
+    .preview div { flex: 1; min-width: 220px; }
+    #status { color: #72e6ad; }
+  </style>
+</head>
+<body>
+
+  <h1>FACEPRANK AI</h1>
+  <p>Bring your uploaded photo to life!</p>
+
+  <div class="container">
+    <h2>Upload a Face</h2>
+
+    <div class="upload">
+      <input type="file" id="photo" accept="image/*">
+    </div>
+
+    <div class="preview">
+      <div>
+        <h3>Uploaded Photo</h3>
+        <img id="imagePreview" alt="Uploaded photo preview">
+      </div>
+
+      <div>
+        <h3>Your Webcam</h3>
+        <video id="camera" autoplay muted playsinline></video>
+      </div>
+    </div>
+
+    <button id="startCamera">Start Webcam</button>
+    <button id="stopCamera">Stop Webcam</button>
+
+    <p id="status">Upload a photo to get started.</p>
+    <p>AI face animation will be added in the next stage.</p>
+  </div>
+
+  <script>
+    const photo = document.getElementById("photo");
+    const preview = document.getElementById("imagePreview");
+    const camera = document.getElementById("camera");
+    const status = document.getElementById("status");
+
+    let stream = null;
+    let imageURL = null;
+
+    photo.addEventListener("change", function() {
+      const file = this.files[0];
+      if (!file) return;
+
+      if (imageURL) URL.revokeObjectURL(imageURL);
+      imageURL = URL.createObjectURL(file);
+      preview.src = imageURL;
+      status.textContent = "Photo uploaded successfully!";
+    });
+
+    document.getElementById("startCamera")
+      .addEventListener("click", async function() {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: false
+          });
+          camera.srcObject = stream;
+          status.textContent = "Webcam is running!";
+        } catch (error) {
+          status.textContent =
+            "Camera unavailable. Check your browser permission.";
+        }
+      });
+
+    document.getElementById("stopCamera")
+      .addEventListener("click", function() {
+        if (stream) {
+          stream.getTracks().forEach(track => track.stop());
+          stream = null;
+          camera.srcObject = null;
+          status.textContent = "Webcam stopped.";
+        }
+      });
+  </script>
+
+</body>
+</html>
