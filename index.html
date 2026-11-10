@@ -1,239 +1,196 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>FacePrank AI</title>
-
 <style>
 * { box-sizing: border-box; }
-
-body {
-  background: #101323;
-  color: white;
-  font-family: Arial, sans-serif;
-  text-align: center;
-  padding: 20px;
-}
-
-.container {
-  max-width: 800px;
-  margin: 25px auto;
-  padding: 20px;
-  background: #1c2138;
-  border-radius: 18px;
-}
-
-button {
-  background: #7465ed;
-  color: white;
-  border: 0;
-  padding: 13px 20px;
-  margin: 8px;
-  border-radius: 8px;
-  cursor: pointer;
-}
-
-.preview {
-  display: flex;
-  justify-content: center;
-  gap: 20px;
-  flex-wrap: wrap;
-}
-
-.preview > div {
-  width: 100%;
-  max-width: 320px;
-}
-
-img, video {
-  width: 100%;
-  border-radius: 12px;
-}
-
-.camera-wrap {
-  position: relative;
-  width: 100%;
-}
-
-.camera-wrap canvas {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-}
-
-#status { color: #55edaa; }
-
+body { background:#101323; color:white; font-family:Arial,sans-serif; text-align:center; padding:20px; }
+.container { max-width:850px; margin:25px auto; padding:20px; background:#1c2138; border-radius:18px; }
+button { background:#7465ed; color:white; border:0; padding:13px 20px; margin:8px; border-radius:8px; cursor:pointer; }
+.preview { display:flex; justify-content:center; gap:20px; flex-wrap:wrap; }
+.preview > div { width:100%; max-width:340px; }
+img, video { width:100%; border-radius:12px; }
+.media-wrap { position:relative; width:100%; }
+.media-wrap canvas { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+#status { color:#55edaa; min-height:22px; }
+.hint { color:#c8c9d8; font-size:14px; line-height:1.5; }
 </style>
 </head>
-
 <body>
-
 <h1 style="color:#9185ff">FACEPRANK AI</h1>
-<p>Bring your uploaded photo to life!</p>
-
+<p>Upload a photo and detect its face, then track your own facial movements.</p>
 <div class="container">
-
-<h2>Upload a Face</h2>
-
-<input type="file" id="photo" accept="image/*">
-
-<div class="preview">
-
-<div>
-<h3>Uploaded Photo</h3>
-<img id="imagePreview" alt="Uploaded photo">
+  <h2>1. Upload a Face</h2>
+  <input type="file" id="photo" accept="image/jpeg,image/png,image/webp">
+  <div class="preview">
+    <div>
+      <h3>Uploaded Photo</h3>
+      <div class="media-wrap">
+        <img id="imagePreview" alt="Your uploaded photo will appear here" hidden>
+        <canvas id="photoCanvas"></canvas>
+      </div>
+      <p id="photoStatus" class="hint">Choose a JPG, PNG, or WebP photo (max 12 MB).</p>
+    </div>
+    <div>
+      <h3>Your Webcam</h3>
+      <div class="media-wrap">
+        <video id="camera" autoplay muted playsinline></video>
+        <canvas id="trackingCanvas"></canvas>
+      </div>
+      <p class="hint">Green dots show detected facial landmarks.</p>
+    </div>
+  </div>
+  <h2>2. Start Face Tracking</h2>
+  <button id="startCamera">Start AI Tracking</button>
+  <button id="stopCamera">Stop Camera</button>
+  <p id="status">Upload a photo, then start tracking.</p>
+  <p class="hint">Photos are processed in your browser and are not uploaded to a server. Use photos with permission and clearly disclose any AI-manipulated output.</p>
 </div>
-
-<div>
-<h3>Your Webcam + AI Tracker</h3>
-<div class="camera-wrap">
-<video id="camera" autoplay muted playsinline></video>
-<canvas id="trackingCanvas"></canvas>
-</div>
-</div>
-
-</div>
-
-<button id="startCamera">Start AI Tracking</button>
-<button id="stopCamera">Stop Camera</button>
-
-<p id="status">Upload a photo and start tracking.</p>
-
-<p>Green dots show detected facial landmarks.</p>
-
-</div>
-
 <script type="module">
-
-import {
-  initializeFaceTracking,
-  trackFace
-} from "./face.js";
+import { initializeFaceTracking, trackFace, detectPhoto } from "./face.js";
 
 const camera = document.getElementById("camera");
-const canvas = document.getElementById("trackingCanvas");
-const ctx = canvas.getContext("2d");
+const trackingCanvas = document.getElementById("trackingCanvas");
+const trackingCtx = trackingCanvas.getContext("2d");
+const photoCanvas = document.getElementById("photoCanvas");
+const photoCtx = photoCanvas.getContext("2d");
+const imagePreview = document.getElementById("imagePreview");
 const status = document.getElementById("status");
+const photoStatus = document.getElementById("photoStatus");
 
 let stream = null;
 let running = false;
+let photoUrl = null;
+let trackerReady = false;
 
-document.getElementById("photo").onchange = event => {
-  const file = event.target.files[0];
-  if (file) {
-    document.getElementById("imagePreview").src =
-      URL.createObjectURL(file);
+function drawLandmarks(ctx, landmarks, width, height) {
+  ctx.clearRect(0, 0, width, height);
+  if (!landmarks) return;
+  ctx.fillStyle = "#00ff88";
+  for (const point of landmarks) {
+    ctx.beginPath();
+    ctx.arc(point.x * width, point.y * height, 1.6, 0, Math.PI * 2);
+    ctx.fill();
   }
-};
+}
+
+document.getElementById("photo").addEventListener("change", async event => {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+  if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+    photoStatus.textContent = "Please choose a JPG, PNG, or WebP image.";
+    event.target.value = "";
+    return;
+  }
+  if (file.size > 12 * 1024 * 1024) {
+    photoStatus.textContent = "That image is larger than 12 MB. Please choose a smaller photo.";
+    event.target.value = "";
+    return;
+  }
+  if (photoUrl) URL.revokeObjectURL(photoUrl);
+  photoUrl = URL.createObjectURL(file);
+  imagePreview.hidden = false;
+  imagePreview.onload = async () => {
+    const width = imagePreview.naturalWidth;
+    const height = imagePreview.naturalHeight;
+    photoCanvas.width = width;
+    photoCanvas.height = height;
+    photoCanvas.style.aspectRatio = width + " / " + height;
+    photoStatus.textContent = "Photo loaded. Start AI tracking to analyze the uploaded face.";
+    if (trackerReady) analyzeUploadedPhoto();
+  };
+  imagePreview.src = photoUrl;
+});
+
+function analyzeUploadedPhoto() {
+  if (!trackerReady || imagePreview.hidden || !imagePreview.complete) return;
+  try {
+    const result = detectPhoto(imagePreview);
+    if (result && result.faceLandmarks && result.faceLandmarks.length) {
+      drawLandmarks(photoCtx, result.faceLandmarks[0], photoCanvas.width, photoCanvas.height);
+      photoStatus.textContent = "Face detected in uploaded photo (" + result.faceLandmarks[0].length + " landmarks).";
+    } else {
+      photoCtx.clearRect(0, 0, photoCanvas.width, photoCanvas.height);
+      photoStatus.textContent = "No face detected. Try a clearer, well-lit photo with the face visible.";
+    }
+  } catch (error) {
+    console.error(error);
+    photoStatus.textContent = "Could not analyze this photo. Try another image.";
+  }
+}
 
 document.getElementById("startCamera").onclick = async () => {
   try {
     status.textContent = "Starting camera...";
-
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        width: { ideal: 320 },
-        height: { ideal: 240 },
-        frameRate: { ideal: 15, max: 15 }
-      },
-      audio: false
-    });
-
-    camera.srcObject = stream;
-    await camera.play();
-
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      throw new Error("Camera access requires HTTPS or localhost.");
+    }
+    if (!stream) {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" },
+        audio: false
+      });
+      camera.srcObject = stream;
+      await camera.play();
+    }
     status.textContent = "Loading AI face tracker...";
-
-    const ready = await initializeFaceTracking();
-
-    if (!ready) return;
-
+    trackerReady = await initializeFaceTracking();
+    if (!trackerReady) return;
+    analyzeUploadedPhoto();
     running = true;
-    status.textContent = "AI TRACKING ACTIVE!";
-
+    status.textContent = "AI tracking active. Looking for your face...";
     detectLoop();
-
   } catch (error) {
     console.error(error);
-    status.textContent = "Error: " + error.message;
+    status.textContent = "Camera error: " + error.message;
   }
 };
 
 function detectLoop() {
   if (!running) return;
-
-  if (camera.readyState >= 2) {
+  if (camera.readyState >= 2 && camera.videoWidth && camera.videoHeight) {
     const width = camera.videoWidth;
     const height = camera.videoHeight;
-
-    if (width && height) {
-      if (canvas.width !== width || canvas.height !== height) {
-        canvas.width = width;
-        canvas.height = height;
+    if (trackingCanvas.width !== width || trackingCanvas.height !== height) {
+      trackingCanvas.width = width;
+      trackingCanvas.height = height;
+    }
+    try {
+      const result = trackFace(camera);
+      if (result && result.faceLandmarks && result.faceLandmarks.length) {
+        drawLandmarks(trackingCtx, result.faceLandmarks[0], width, height);
+        status.textContent = "Your face is detected — " + result.faceLandmarks[0].length + " tracking points.";
+      } else {
+        trackingCtx.clearRect(0, 0, width, height);
+        status.textContent = "Looking for your face...";
       }
-
-      ctx.clearRect(0, 0, width, height);
-
-      try {
-        const result = trackFace(camera);
-
-        if (result && result.faceLandmarks &&
-            result.faceLandmarks.length > 0) {
-
-          const points = result.faceLandmarks[0];
-
-          ctx.fillStyle = "#00ff88";
-
-          for (const point of points) {
-            ctx.beginPath();
-            ctx.arc(
-              point.x * width,
-              point.y * height,
-              1.5,
-              0,
-              Math.PI * 2
-            );
-            ctx.fill();
-          }
-
-          status.textContent =
-            "FACE DETECTED! " + points.length +
-            " tracking points.";
-        } else {
-          status.textContent = "Looking for a face...";
-        }
-
-      } catch (error) {
-        console.error(error);
-        status.textContent = "Tracking error: " + error.message;
-        running = false;
-        return;
-      }
+    } catch (error) {
+      console.error(error);
+      status.textContent = "Tracking error: " + error.message;
+      running = false;
+      return;
     }
   }
-
   requestAnimationFrame(detectLoop);
 }
 
 document.getElementById("stopCamera").onclick = () => {
   running = false;
-
   if (stream) {
     stream.getTracks().forEach(track => track.stop());
     stream = null;
   }
-
   camera.srcObject = null;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
+  trackingCtx.clearRect(0, 0, trackingCanvas.width, trackingCanvas.height);
   status.textContent = "Camera stopped.";
 };
 
+window.addEventListener("beforeunload", () => {
+  if (photoUrl) URL.revokeObjectURL(photoUrl);
+  if (stream) stream.getTracks().forEach(track => track.stop());
+});
 </script>
-
 </body>
 </html>
