@@ -7,7 +7,11 @@
 <style>
 * { box-sizing: border-box; }
 body { background:#101323; color:white; font-family:Arial,sans-serif; text-align:center; padding:20px; }
-.container { max-width:850px; margin:25px auto; padding:20px; background:#1c2138; border-radius:18px; }
+.container { max-width:1180px; margin:25px auto; padding:24px; background:#1c2138; border-radius:18px; }
+.preview > div:last-child { max-width:760px; width:100%; }
+.preview > div:nth-child(1), .preview > div:nth-child(2) { max-width:300px; }
+.preview > div:last-child .media-wrap { width:100%; min-height:360px; aspect-ratio:4 / 3; background:#080b16; border-radius:14px; overflow:hidden; }
+#resultCanvas { width:100%; height:100%; object-fit:contain; }
 button { background:#7465ed; color:white; border:0; padding:13px 20px; margin:8px; border-radius:8px; cursor:pointer; }
 .preview { display:flex; justify-content:center; gap:20px; flex-wrap:wrap; }
 .preview > div { width:100%; max-width:340px; }
@@ -122,6 +126,8 @@ function drawWarpedFace(target) {
   if(!photoLandmarks||!target||!meshTriangles||imagePreview.hidden) return;
   const w=resultCanvas.width,h=resultCanvas.height;
   resultCtx.clearRect(0,0,w,h);
+  // Keep the complete original portrait (hair, neck, shoulders and clothing) visible.
+  resultCtx.drawImage(imagePreview,0,0,w,h);
   for(const tri of meshTriangles) {
     const src=tri.map(i=>({x:photoLandmarks[i].x*imagePreview.naturalWidth,y:photoLandmarks[i].y*imagePreview.naturalHeight}));
     const dst=tri.map(i=>({x:target[i].x*w,y:target[i].y*h}));
@@ -174,6 +180,13 @@ document.getElementById("photo").addEventListener("change", async event => {
     photoCanvas.width = width;
     photoCanvas.height = height;
     photoCanvas.style.aspectRatio = width + " / " + height;
+    // Match the large output canvas to the uploaded portrait's original proportions.
+    const outputScale = Math.min(1, 1200 / Math.max(width, height));
+    resultCanvas.width = Math.max(1, Math.round(width * outputScale));
+    resultCanvas.height = Math.max(1, Math.round(height * outputScale));
+    resultCanvas.style.aspectRatio = width + " / " + height;
+    resultCtx.clearRect(0, 0, resultCanvas.width, resultCanvas.height);
+    resultCtx.drawImage(imagePreview, 0, 0, resultCanvas.width, resultCanvas.height);
     photoStatus.textContent = "Photo loaded. Start AI tracking to analyze the uploaded face.";
     if (trackerReady) analyzeUploadedPhoto();
   };
@@ -249,7 +262,11 @@ function detectLoop() {
       const result = trackFace(camera);
       if (result && result.faceLandmarks && result.faceLandmarks.length) {
         drawLandmarks(trackingCtx, result.faceLandmarks[0], width, height);
-        if(resultCanvas.width!==width||resultCanvas.height!==height){resultCanvas.width=width;resultCanvas.height=height;}
+        // Keep output dimensions tied to the uploaded photo so its full body framing stays visible.
+        if (!resultCanvas.width || !resultCanvas.height) {
+          resultCanvas.width = imagePreview.naturalWidth;
+          resultCanvas.height = imagePreview.naturalHeight;
+        }
         drawWarpedFace(result.faceLandmarks[0]);
         status.textContent = "Your face is detected — " + result.faceLandmarks[0].length + " tracking points.";
       } else {
