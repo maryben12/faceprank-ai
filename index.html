@@ -191,7 +191,8 @@ function analyzeUploadedPhoto() {
     }
   } catch (error) {
     console.error(error);
-    photoStatus.textContent = "Could not analyze this photo. Try another image.";
+    photoStatus.textContent = "Photo analysis error: " + (error && error.message ? error.message : String(error)) + ". Try a JPG or PNG with one clear, front-facing face.";
+    status.textContent = "Photo analysis failed. See the message under Uploaded Photo.";
   }
 }
 
