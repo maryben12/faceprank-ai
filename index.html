@@ -90,11 +90,12 @@ function triangulate(points) {
     const x=(D*E-B*F)/G,y=(A*F-C*E)/G;
     return {x,y,r2:(x-a.x)**2+(y-a.y)**2};
   }
-  let triangles=[[-1,-2,-3]];
+  // Super-triangle vertices are stored after the real landmark points.
+  let triangles=[[pts.length,pts.length+1,pts.length+2]];
   for(let i=0;i<pts.length;i++) {
     const p=all[i], bad=[];
     for(let j=0;j<triangles.length;j++) {
-      const t=triangles[j], c=circle(all[t[0]+pts.length],all[t[1]+pts.length],all[t[2]+pts.length]);
+      const t=triangles[j], c=circle(all[t[0]],all[t[1]],all[t[2]]);
       if((p.x-c.x)**2+(p.y-c.y)**2<=c.r2+1e-8) bad.push(j);
     }
     const edges=[];
@@ -108,7 +109,8 @@ function triangulate(points) {
     for(const j of bad.sort((a,b)=>b-a)) triangles.splice(j,1);
     for(const e of edges) triangles.push([e[0],e[1],i]);
   }
-  return triangles.filter(t=>t.every(i=>i>=0));
+  // Discard any triangle that still touches a super-triangle vertex.
+  return triangles.filter(t=>t.every(i=>i>=0 && i<pts.length));
 }
 
 function drawWarpedFace(target) {
