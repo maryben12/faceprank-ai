@@ -41,6 +41,11 @@ img, video { width:100%; border-radius:12px; }
       </div>
       <p class="hint">Green dots show detected facial landmarks.</p>
     </div>
+    <div>
+      <h3>Live FacePrank Preview</h3>
+      <div class="media-wrap"><canvas id="resultCanvas"></canvas></div>
+      <p class="hint">Your uploaded face follows your webcam landmarks.</p>
+    </div>
   </div>
   <h2>2. Start Face Tracking</h2>
   <button id="startCamera">Start AI Tracking</button>
@@ -56,6 +61,8 @@ const trackingCanvas = document.getElementById("trackingCanvas");
 const trackingCtx = trackingCanvas.getContext("2d");
 const photoCanvas = document.getElementById("photoCanvas");
 const photoCtx = photoCanvas.getContext("2d");
+const resultCanvas = document.getElementById("resultCanvas");
+const resultCtx = resultCanvas.getContext("2d");
 const imagePreview = document.getElementById("imagePreview");
 const status = document.getElementById("status");
 const photoStatus = document.getElementById("photoStatus");
@@ -64,6 +71,66 @@ let stream = null;
 let running = false;
 let photoUrl = null;
 let trackerReady = false;
+let photoLandmarks = null;
+let meshTriangles = null;
+
+function triangulate(points) {
+  const pts = points.map((p, i) => ({ x: p.x, y: p.y, i }));
+  let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
+  for (const p of pts) { minX=Math.min(minX,p.x); minY=Math.min(minY,p.y); maxX=Math.max(maxX,p.x); maxY=Math.max(maxY,p.y); }
+  const d=Math.max(maxX-minX,maxY-minY)||1, mx=(minX+maxX)/2, my=(minY+maxY)/2;
+  const all=pts.concat([{x:mx-20*d,y:my-10*d,i:-1},{x:mx,y:my+20*d,i:-2},{x:mx+20*d,y:my-10*d,i:-3}]);
+  function circle(a,b,c) {
+    const A=b.x-a.x,B=b.y-a.y,C=c.x-a.x,D=c.y-a.y;
+    const E=A*(a.x+b.x)+B*(a.y+b.y), F=C*(a.x+c.x)+D*(a.y+c.y);
+    const G=2*(A*(c.y-b.y)-B*(c.x-b.x));
+    if(Math.abs(G)<1e-10) return {x:0,y:0,r2:Infinity};
+    const x=(D*E-B*F)/G,y=(A*F-C*E)/G;
+    return {x,y,r2:(x-a.x)**2+(y-a.y)**2};
+  }
+  let triangles=[[-1,-2,-3]];
+  for(let i=0;i<pts.length;i++) {
+    const p=all[i], bad=[];
+    for(let j=0;j<triangles.length;j++) {
+      const t=triangles[j], c=circle(all[t[0]+pts.length],all[t[1]+pts.length],all[t[2]+pts.length]);
+      if((p.x-c.x)**2+(p.y-c.y)**2<=c.r2+1e-8) bad.push(j);
+    }
+    const edges=[];
+    for(const j of bad) {
+      const t=triangles[j];
+      for(const e of [[t[0],t[1]],[t[1],t[2]],[t[2],t[0]]]) {
+        const k=edges.findIndex(q=>q[0]===e[1]&&q[1]===e[0]);
+        if(k>=0) edges.splice(k,1); else edges.push(e);
+      }
+    }
+    for(const j of bad.sort((a,b)=>b-a)) triangles.splice(j,1);
+    for(const e of edges) triangles.push([e[0],e[1],i]);
+  }
+  return triangles.filter(t=>t.every(i=>i>=0));
+}
+
+function drawWarpedFace(target) {
+  if(!photoLandmarks||!target||!meshTriangles||imagePreview.hidden) return;
+  const w=resultCanvas.width,h=resultCanvas.height;
+  resultCtx.clearRect(0,0,w,h);
+  for(const tri of meshTriangles) {
+    const src=tri.map(i=>({x:photoLandmarks[i].x*imagePreview.naturalWidth,y:photoLandmarks[i].y*imagePreview.naturalHeight}));
+    const dst=tri.map(i=>({x:target[i].x*w,y:target[i].y*h}));
+    const [a,b,c]=src,[A,B,C]=dst;
+    const den=a.x*(b.y-c.y)+b.x*(c.y-a.y)+c.x*(a.y-b.y);
+    if(Math.abs(den)<0.0001) continue;
+    const m11=(A.x*(b.y-c.y)+B.x*(c.y-a.y)+C.x*(a.y-b.y))/den;
+    const m12=(A.x*(c.x-b.x)+B.x*(a.x-c.x)+C.x*(b.x-a.x))/den;
+    const m21=(A.y*(b.y-c.y)+B.y*(c.y-a.y)+C.y*(a.y-b.y))/den;
+    const m22=(A.y*(c.x-b.x)+B.y*(a.x-c.x)+C.y*(b.x-a.x))/den;
+    const dx=A.x-m11*a.x-m12*a.y,dy=A.y-m21*a.x-m22*a.y;
+    resultCtx.save();
+    resultCtx.beginPath(); resultCtx.moveTo(A.x,A.y); resultCtx.lineTo(B.x,B.y); resultCtx.lineTo(C.x,C.y); resultCtx.closePath(); resultCtx.clip();
+    resultCtx.setTransform(m11,m21,m12,m22,dx,dy);
+    resultCtx.drawImage(imagePreview,0,0);
+    resultCtx.restore();
+  }
+}
 
 function drawLandmarks(ctx, landmarks, width, height) {
   ctx.clearRect(0, 0, width, height);
@@ -109,10 +176,15 @@ function analyzeUploadedPhoto() {
   try {
     const result = detectPhoto(imagePreview);
     if (result && result.faceLandmarks && result.faceLandmarks.length) {
-      drawLandmarks(photoCtx, result.faceLandmarks[0], photoCanvas.width, photoCanvas.height);
+      photoLandmarks = result.faceLandmarks[0];
+      meshTriangles = triangulate(photoLandmarks);
+      drawLandmarks(photoCtx, photoLandmarks, photoCanvas.width, photoCanvas.height);
       photoStatus.textContent = "Face detected in uploaded photo (" + result.faceLandmarks[0].length + " landmarks).";
     } else {
+      photoLandmarks = null;
+      meshTriangles = null;
       photoCtx.clearRect(0, 0, photoCanvas.width, photoCanvas.height);
+      resultCtx.clearRect(0, 0, resultCanvas.width, resultCanvas.height);
       photoStatus.textContent = "No face detected. Try a clearer, well-lit photo with the face visible.";
     }
   } catch (error) {
@@ -161,9 +233,12 @@ function detectLoop() {
       const result = trackFace(camera);
       if (result && result.faceLandmarks && result.faceLandmarks.length) {
         drawLandmarks(trackingCtx, result.faceLandmarks[0], width, height);
+        if(resultCanvas.width!==width||resultCanvas.height!==height){resultCanvas.width=width;resultCanvas.height=height;}
+        drawWarpedFace(result.faceLandmarks[0]);
         status.textContent = "Your face is detected — " + result.faceLandmarks[0].length + " tracking points.";
       } else {
         trackingCtx.clearRect(0, 0, width, height);
+        resultCtx.clearRect(0, 0, resultCanvas.width, resultCanvas.height);
         status.textContent = "Looking for your face...";
       }
     } catch (error) {
@@ -184,6 +259,7 @@ document.getElementById("stopCamera").onclick = () => {
   }
   camera.srcObject = null;
   trackingCtx.clearRect(0, 0, trackingCanvas.width, trackingCanvas.height);
+  resultCtx.clearRect(0, 0, resultCanvas.width, resultCanvas.height);
   status.textContent = "Camera stopped.";
 };
 
