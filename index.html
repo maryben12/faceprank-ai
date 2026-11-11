@@ -68,7 +68,7 @@ img, video { display:block; width:100%; height:auto; border-radius:12px; }
 </div>
 <div class="container">
   <h2>3. Full-Body Motion Studio (Free Beta)</h2>
-  <p class="hint">Live mode tracks your body in real time. Video mode extracts body movement from a driving video. This beta shows motion tracking; realistic full-body photo animation requires a separate generative video engine.</p>
+  <p class="hint">Lightweight mode for computers with limited memory: body tracking runs in your browser using the CPU. Live mode tracks your pose; video mode extracts pose movement. This is motion capture, not yet realistic animation of the uploaded photo.</p>
   <h3>Live Full-Body Webcam</h3>
   <p class="hint">Start AI Tracking above, then stand back so your full body is visible.</p>
   <p id="bodyStatus" class="hint">Body tracker will initialize when you start the camera.</p>
@@ -324,7 +324,7 @@ document.getElementById("startCamera").onclick = async () => {
     }
     if (!stream) {
       stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" },
+        video: { width: { ideal: 480, max: 640 }, height: { ideal: 360, max: 480 }, frameRate: { ideal: 15, max: 20 }, facingMode: "user" },
         audio: false
       });
       camera.srcObject = stream;
@@ -406,6 +406,16 @@ function detectLoop() {
 document.getElementById("motionVideoFile").addEventListener("change", event => {
   const file = event.target.files && event.target.files[0];
   if (!file) return;
+  if (!file.type.startsWith("video/")) {
+    videoMotionStatus.textContent = "Please choose a video file.";
+    event.target.value = "";
+    return;
+  }
+  if (file.size > 100 * 1024 * 1024) {
+    videoMotionStatus.textContent = "Please choose a video smaller than 100 MB for this low-memory version.";
+    event.target.value = "";
+    return;
+  }
   if (motionVideoUrl) URL.revokeObjectURL(motionVideoUrl);
   motionVideoUrl = URL.createObjectURL(file);
   motionVideo.src = motionVideoUrl;
