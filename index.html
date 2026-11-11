@@ -416,7 +416,16 @@ motionVideo.addEventListener("loadedmetadata", () => {
   videoBodyCanvas.height = motionVideo.videoHeight;
   videoBodyCanvas.style.aspectRatio = motionVideo.videoWidth + " / " + motionVideo.videoHeight;
 });
-motionVideo.addEventListener("play", () => {
+motionVideo.addEventListener("play", async () => {
+  if (!motionTrackerReady) {
+    videoMotionStatus.textContent = "Loading the free body-tracking model...";
+    try {
+      motionTrackerReady = await initializeMotionTracking();
+    } catch (error) {
+      videoMotionStatus.textContent = "Could not load body tracking: " + error.message;
+      return;
+    }
+  }
   const processMotionVideo = () => {
     if (motionVideo.paused || motionVideo.ended) return;
     if (motionTrackerReady && motionVideo.readyState >= 2) {
@@ -429,8 +438,6 @@ motionVideo.addEventListener("play", () => {
       } catch (error) {
         videoMotionStatus.textContent = "Video tracking issue: " + error.message;
       }
-    } else if (!motionTrackerReady) {
-      videoMotionStatus.textContent = "Start AI Tracking above first to initialize the free body tracker.";
     }
     requestAnimationFrame(processMotionVideo);
   };
