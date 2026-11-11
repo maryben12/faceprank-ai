@@ -79,6 +79,8 @@ img, video { display:block; width:100%; height:auto; border-radius:12px; }
     <canvas id="videoBodyCanvas"></canvas>
   </div>
   <p id="videoMotionStatus" class="hint">Upload a video to preview its body movement.</p>
+  <button id="exportMotion" disabled>Export Tracked Movement</button>
+  <p id="exportMotionStatus" class="hint">Play the video to collect movement data. Export becomes available after tracking detects movement.</p>
 </div>
 <script type="module">
 import { initializeFaceTracking, trackFace, detectPhoto } from "./face.js";
@@ -96,6 +98,8 @@ const bodyStatus = document.getElementById("bodyStatus");
 const videoMotionStatus = document.getElementById("videoMotionStatus");
 let motionTrackerReady = false;
 let motionVideoUrl = null;
+let capturedMotionFrames = [];
+let lastCapturedVideoTime = -1;
 const photoCanvas = document.getElementById("photoCanvas");
 const photoCtx = photoCanvas.getContext("2d");
 const resultCanvas = document.getElementById("resultCanvas");
@@ -420,6 +424,10 @@ document.getElementById("motionVideoFile").addEventListener("change", event => {
   motionVideoUrl = URL.createObjectURL(file);
   motionVideo.src = motionVideoUrl;
   videoMotionStatus.textContent = "Video loaded. Press play to analyze its movement.";
+  capturedMotionFrames = [];
+  lastCapturedVideoTime = -1;
+  document.getElementById("exportMotion").disabled = true;
+  document.getElementById("exportMotionStatus").textContent = "Play the video to collect movement data. Export becomes available after tracking detects movement.";
 });
 motionVideo.addEventListener("loadedmetadata", () => {
   videoBodyCanvas.width = motionVideo.videoWidth;
@@ -442,6 +450,13 @@ motionVideo.addEventListener("play", async () => {
       try {
         const result = trackMotionVideo(motionVideo, performance.now());
         drawBodyPose(videoBodyCtx, result && result.landmarks, videoBodyCanvas.width, videoBodyCanvas.height);
+        if (result && result.landmarks && result.landmarks.length && motionVideo.currentTime > lastCapturedVideoTime + 0.08) {
+          const pose = result.landmarks[0];
+          capturedMotionFrames.push({ time: Number(motionVideo.currentTime.toFixed(3)), landmarks: pose.map(point => ({ x: point.x, y: point.y, z: point.z || 0, visibility: point.visibility ?? 1 })) });
+          lastCapturedVideoTime = motionVideo.currentTime;
+          document.getElementById("exportMotion").disabled = false;
+          document.getElementById("exportMotionStatus").textContent = capturedMotionFrames.length + " movement samples collected. Export saves tracking data only; it does not create the animated photo yet.";
+        }
         videoMotionStatus.textContent = result && result.landmarks && result.landmarks.length
           ? "Movement detected. This is the extracted pose preview, not yet a generated photo animation."
           : "Searching for a visible person in the video...";
@@ -454,6 +469,19 @@ motionVideo.addEventListener("play", async () => {
   requestAnimationFrame(processMotionVideo);
 });
 motionVideo.addEventListener("pause", () => videoBodyCtx.clearRect(0,0,videoBodyCanvas.width,videoBodyCanvas.height));
+
+document.getElementById("exportMotion").addEventListener("click", () => {
+  if (!capturedMotionFrames.length) return;
+  const data = { format: "FacePrankAI-motion-v1", sourceVideoDuration: motionVideo.duration, frames: capturedMotionFrames };
+  const blob = new Blob([JSON.stringify(data)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "faceprank-motion-data.json";
+  link.click();
+  URL.revokeObjectURL(url);
+  document.getElementById("exportMotionStatus").textContent = "Movement data downloaded. This file can be used by a future animation engine; it is not an MP4 video.";
+});
 document.getElementById("stopCamera").onclick = () => {
   running = false;
   if (stream) {
