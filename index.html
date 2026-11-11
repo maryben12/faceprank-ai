@@ -89,6 +89,13 @@ img, video { display:block; width:100%; height:auto; border-radius:12px; }
   <button id="pauseMotionReplay" disabled>Pause Preview</button>
   <p id="motionReplayStatus" class="hint">Upload your faceprank-motion-data.json file to preview its movement over the photo.</p>
 </div>
+<div class="container">
+  <h2>5. Real AI Motion Transfer (Online)</h2>
+  <p class="hint">This opens an online AI animation demo that can transfer movement from your reference video to the person in your photo. It runs on a remote GPU, so your computer does not need a powerful graphics card. Free access is shared and may have queues or limits.</p>
+  <p class="hint"><strong>What to upload:</strong> your original character photo and the short movement video (not the JSON tracking file).</p>
+  <a href="https://wan2.video/wan-animate-demo" target="_blank" rel="noopener noreferrer" style="display:inline-block;background:#7465ed;color:white;padding:13px 20px;margin:8px;border-radius:8px;text-decoration:none">Open Real AI Motion Transfer</a>
+  <p class="hint">Choose <strong>Move</strong> to animate the person in your photo. Start with the Standard setting and a 2–5 second reference clip. This is a third-party service; your uploads leave this website. Only use images and videos you have permission to use, and do not upload private material.</p>
+</div>
 <script type="module">
 import { initializeFaceTracking, trackFace, detectPhoto } from "./face.js";
 import { initializeMotionTracking, trackBody, trackMotionVideo, drawBodyPose } from "./motion.js";
