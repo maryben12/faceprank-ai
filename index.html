@@ -1,239 +1,477 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>FacePrank AI</title>
-
 <style>
-* { box-sizing: border-box; }
-
-body {
-  background: #101323;
-  color: white;
-  font-family: Arial, sans-serif;
-  text-align: center;
-  padding: 20px;
+* { box-sizing:border-box; }
+body { background:#101323; color:white; font-family:Arial,sans-serif; text-align:center; padding:20px; }
+.container { max-width:1240px; margin:25px auto; padding:24px; background:#1c2138; border-radius:18px; }
+button { background:#7465ed; color:white; border:0; padding:13px 20px; margin:8px; border-radius:8px; cursor:pointer; }
+.preview { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; align-items:start; }
+.preview > div { width:100%; max-width:none; min-width:0; }
+.preview > div:last-child { grid-column:1 / -1; width:100%; max-width:none; }
+.preview > div:last-child .media-wrap { width:100%; max-width:920px; margin:0 auto; min-height:0; height:auto; aspect-ratio:auto; background:#080b16; border-radius:14px; overflow:hidden; }
+.media-wrap { position:relative; width:100%; background:#0b0e19; border-radius:12px; overflow:hidden; }
+.media-wrap:has(#resultCanvas) { aspect-ratio:auto; height:auto; min-height:0; }
+img, video { display:block; width:100%; height:auto; border-radius:12px; }
+#resultCanvas { position:relative; inset:auto; display:block; width:100%; height:auto; max-height:760px; object-fit:contain; margin:0 auto; pointer-events:none; }
+.media-wrap canvas:not(#resultCanvas) { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+#bodyCanvas, #videoBodyCanvas { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+#status { color:#55edaa; min-height:22px; }
+.hint { color:#c8c9d8; font-size:14px; line-height:1.5; }
+@media (max-width:700px) {
+ body { padding:10px; }
+ .container { padding:14px; }
+ .preview { grid-template-columns:1fr; }
+ .preview > div:last-child { grid-column:auto; }
+ .preview > div:last-child .media-wrap { max-width:100%; }
 }
-
-.container {
-  max-width: 800px;
-  margin: 25px auto;
-  padding: 20px;
-  background: #1c2138;
-  border-radius: 18px;
-}
-
-button {
-  background: #7465ed;
-  color: white;
-  border: 0;
-  padding: 13px 20px;
-  margin: 8px;
-  border-radius: 8px;
-  cursor: pointer;
-}
-
-.preview {
-  display: flex;
-  justify-content: center;
-  gap: 20px;
-  flex-wrap: wrap;
-}
-
-.preview > div {
-  width: 100%;
-  max-width: 320px;
-}
-
-img, video {
-  width: 100%;
-  border-radius: 12px;
-}
-
-.camera-wrap {
-  position: relative;
-  width: 100%;
-}
-
-.camera-wrap canvas {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-}
-
-#status { color: #55edaa; }
-
 </style>
 </head>
-
 <body>
-
 <h1 style="color:#9185ff">FACEPRANK AI</h1>
-<p>Bring your uploaded photo to life!</p>
-
+<p>Upload a photo and detect its face, then track your own facial movements.</p>
 <div class="container">
-
-<h2>Upload a Face</h2>
-
-<input type="file" id="photo" accept="image/*">
-
-<div class="preview">
-
-<div>
-<h3>Uploaded Photo</h3>
-<img id="imagePreview" alt="Uploaded photo">
+  <h2>1. Upload a Face</h2>
+  <input type="file" id="photo" accept="image/jpeg,image/png,image/webp">
+  <div class="preview">
+    <div>
+      <h3>Uploaded Photo</h3>
+      <div class="media-wrap">
+        <img id="imagePreview" alt="Your uploaded photo will appear here" hidden>
+        <canvas id="photoCanvas"></canvas>
+      </div>
+      <p id="photoStatus" class="hint">Choose a JPG, PNG, or WebP photo (max 12 MB).</p>
+    </div>
+    <div>
+      <h3>Your Webcam</h3>
+      <div class="media-wrap">
+        <video id="camera" autoplay muted playsinline></video>
+        <canvas id="trackingCanvas"></canvas>
+        <canvas id="bodyCanvas"></canvas>
+      </div>
+      <p class="hint">Green dots show detected facial landmarks.</p>
+    </div>
+    <div>
+      <h3>Live FacePrank Preview — Main Screen</h3>
+      <div class="media-wrap"><canvas id="resultCanvas"></canvas></div>
+      <p class="hint">Large portrait preview. Facial movement is mapped onto the uploaded face; hair and body remain from the original photo.</p>
+    </div>
+  </div>
+  <h2>2. Start Face Tracking</h2>
+  <button id="startCamera">Start AI Tracking</button>
+  <button id="stopCamera">Stop Camera</button>
+  <p id="status">Upload a photo, then start tracking.</p>
+  <p class="hint">Photos are processed in your browser and are not uploaded to a server. Use photos with permission and clearly disclose any AI-manipulated output.</p>
 </div>
-
-<div>
-<h3>Your Webcam + AI Tracker</h3>
-<div class="camera-wrap">
-<video id="camera" autoplay muted playsinline></video>
-<canvas id="trackingCanvas"></canvas>
+<div class="container">
+  <h2>3. Full-Body Motion Studio (Free Beta)</h2>
+  <p class="hint">Lightweight mode for computers with limited memory: body tracking runs in your browser using the CPU. Live mode tracks your pose; video mode extracts pose movement. This is motion capture, not yet realistic animation of the uploaded photo.</p>
+  <h3>Live Full-Body Webcam</h3>
+  <p class="hint">Start AI Tracking above, then stand back so your full body is visible.</p>
+  <p id="bodyStatus" class="hint">Body tracker will initialize when you start the camera.</p>
+  <h3>Video Motion Capture</h3>
+  <input type="file" id="motionVideoFile" accept="video/*">
+  <div class="media-wrap" style="max-width:720px;margin:12px auto">
+    <video id="motionVideo" controls playsinline></video>
+    <canvas id="videoBodyCanvas"></canvas>
+  </div>
+  <p id="videoMotionStatus" class="hint">Upload a video to preview its body movement.</p>
 </div>
-</div>
-
-</div>
-
-<button id="startCamera">Start AI Tracking</button>
-<button id="stopCamera">Stop Camera</button>
-
-<p id="status">Upload a photo and start tracking.</p>
-
-<p>Green dots show detected facial landmarks.</p>
-
-</div>
-
 <script type="module">
-
-import {
-  initializeFaceTracking,
-  trackFace
-} from "./face.js";
+import { initializeFaceTracking, trackFace, detectPhoto } from "./face.js";
+import { initializeMotionTracking, trackBody, trackMotionVideo, drawBodyPose } from "./motion.js";
 
 const camera = document.getElementById("camera");
-const canvas = document.getElementById("trackingCanvas");
-const ctx = canvas.getContext("2d");
+const trackingCanvas = document.getElementById("trackingCanvas");
+const trackingCtx = trackingCanvas.getContext("2d");
+const bodyCanvas = document.getElementById("bodyCanvas");
+const bodyCtx = bodyCanvas.getContext("2d");
+const motionVideo = document.getElementById("motionVideo");
+const videoBodyCanvas = document.getElementById("videoBodyCanvas");
+const videoBodyCtx = videoBodyCanvas.getContext("2d");
+const bodyStatus = document.getElementById("bodyStatus");
+const videoMotionStatus = document.getElementById("videoMotionStatus");
+let motionTrackerReady = false;
+let motionVideoUrl = null;
+const photoCanvas = document.getElementById("photoCanvas");
+const photoCtx = photoCanvas.getContext("2d");
+const resultCanvas = document.getElementById("resultCanvas");
+const resultCtx = resultCanvas.getContext("2d");
+const imagePreview = document.getElementById("imagePreview");
 const status = document.getElementById("status");
+const photoStatus = document.getElementById("photoStatus");
 
 let stream = null;
 let running = false;
+let photoUrl = null;
+let trackerReady = false;
+let photoLandmarks = null;
+let meshTriangles = null;
+let smoothedLandmarks = null;
+let smoothedJawOpen = 0;
+let neutralFaceBox = null;
 
-document.getElementById("photo").onchange = event => {
-  const file = event.target.files[0];
-  if (file) {
-    document.getElementById("imagePreview").src =
-      URL.createObjectURL(file);
+function triangulate(points) {
+  const pts = points
+    .map((p, i) => p && Number.isFinite(p.x) && Number.isFinite(p.y) ? ({ x: p.x, y: p.y, i }) : null)
+    .filter(Boolean);
+  if (pts.length < 3) throw new Error("Not enough valid face landmarks to build a mesh.");
+  let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
+  for (const p of pts) { minX=Math.min(minX,p.x); minY=Math.min(minY,p.y); maxX=Math.max(maxX,p.x); maxY=Math.max(maxY,p.y); }
+  const d=Math.max(maxX-minX,maxY-minY)||1, mx=(minX+maxX)/2, my=(minY+maxY)/2;
+  const all=pts.concat([{x:mx-20*d,y:my-10*d,i:-1},{x:mx,y:my+20*d,i:-2},{x:mx+20*d,y:my-10*d,i:-3}]);
+  function circle(a,b,c) {
+    const A=b.x-a.x,B=b.y-a.y,C=c.x-a.x,D=c.y-a.y;
+    const E=A*(a.x+b.x)+B*(a.y+b.y), F=C*(a.x+c.x)+D*(a.y+c.y);
+    const G=2*(A*(c.y-b.y)-B*(c.x-b.x));
+    if(Math.abs(G)<1e-10) return {x:0,y:0,r2:Infinity};
+    const x=(D*E-B*F)/G,y=(A*F-C*E)/G;
+    return {x,y,r2:(x-a.x)**2+(y-a.y)**2};
   }
-};
+  // Super-triangle vertices are stored after the real landmark points.
+  let triangles=[[pts.length,pts.length+1,pts.length+2]];
+  for(let i=0;i<pts.length;i++) {
+    const p=all[i], bad=[];
+    for(let j=0;j<triangles.length;j++) {
+      const t=triangles[j];
+      if (!t || t.some(index => !Number.isInteger(index) || !all[index])) continue;
+      const c=circle(all[t[0]],all[t[1]],all[t[2]]);
+      if((p.x-c.x)**2+(p.y-c.y)**2<=c.r2+1e-8) bad.push(j);
+    }
+    const edges=[];
+    for(const j of bad) {
+      const t=triangles[j];
+      for(const e of [[t[0],t[1]],[t[1],t[2]],[t[2],t[0]]]) {
+        const k=edges.findIndex(q=>q[0]===e[1]&&q[1]===e[0]);
+        if(k>=0) edges.splice(k,1); else edges.push(e);
+      }
+    }
+    for(const j of bad.sort((a,b)=>b-a)) triangles.splice(j,1);
+    for(const e of edges) triangles.push([e[0],e[1],i]);
+  }
+  // Discard any triangle that still touches a super-triangle vertex.
+  return triangles.filter(t=>t.every(i=>i>=0 && i<pts.length));
+}
+
+function drawWarpedFace(target, blendshapes = []) {
+  if(!photoLandmarks||!target||!meshTriangles||imagePreview.hidden) return;
+  const w=resultCanvas.width,h=resultCanvas.height;
+  resultCtx.clearRect(0,0,w,h);
+  // Keep the complete original portrait visible; the face mesh is animated over it.
+  resultCtx.drawImage(imagePreview,0,0,w,h);
+
+  const bounds = points => {
+    const valid = points.filter(p => p && Number.isFinite(p.x) && Number.isFinite(p.y));
+    return {
+      minX: Math.min(...valid.map(p=>p.x)), maxX: Math.max(...valid.map(p=>p.x)),
+      minY: Math.min(...valid.map(p=>p.y)), maxY: Math.max(...valid.map(p=>p.y))
+    };
+  };
+
+  // Temporal landmark smoothing reduces small webcam jitters without making movement feel too delayed.
+  if (!smoothedLandmarks || smoothedLandmarks.length !== target.length) {
+    smoothedLandmarks = target.map(p => ({x:p.x,y:p.y,z:p.z||0}));
+  } else {
+    const smooth = 0.30;
+    for (let i=0;i<target.length;i++) {
+      const p=target[i], prev=smoothedLandmarks[i];
+      if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
+      prev.x += (p.x-prev.x)*smooth;
+      prev.y += (p.y-prev.y)*smooth;
+      if (Number.isFinite(p.z)) prev.z += (p.z-prev.z)*smooth;
+    }
+  }
+  const stableTarget = smoothedLandmarks;
+  const srcBox = bounds(photoLandmarks);
+  const dstBox = bounds(stableTarget);
+  const srcWidth = Math.max(0.0001, srcBox.maxX-srcBox.minX);
+  const srcHeight = Math.max(0.0001, srcBox.maxY-srcBox.minY);
+  const dstWidth = Math.max(0.0001, dstBox.maxX-dstBox.minX);
+  const dstHeight = Math.max(0.0001, dstBox.maxY-dstBox.minY);
+
+  // Remember the neutral webcam position so gentle head turns and shifts can transfer to the portrait.
+  if (!neutralFaceBox) neutralFaceBox = {
+    cx:(dstBox.minX+dstBox.maxX)/2, cy:(dstBox.minY+dstBox.maxY)/2,
+    width:dstWidth, height:dstHeight
+  };
+  const centerX=(dstBox.minX+dstBox.maxX)/2;
+  const centerY=(dstBox.minY+dstBox.maxY)/2;
+  const shiftX=Math.max(-0.10,Math.min(0.10,centerX-neutralFaceBox.cx))*imagePreview.naturalWidth*0.9;
+  const shiftY=Math.max(-0.10,Math.min(0.10,centerY-neutralFaceBox.cy))*imagePreview.naturalHeight*0.9;
+
+  const mapped = stableTarget.map(p => ({
+    x: (srcBox.minX + ((p.x-dstBox.minX)/dstWidth)*srcWidth) * imagePreview.naturalWidth + shiftX,
+    y: (srcBox.minY + ((p.y-dstBox.minY)/dstHeight)*srcHeight) * imagePreview.naturalHeight + shiftY
+  }));
+
+  // Smooth the jaw signal, then open the lower lip farther to make talking more noticeable.
+  const jaw = blendshapes.find(x => x.categoryName === "jawOpen");
+  const rawJaw = jaw ? Math.max(0,Math.min(1,jaw.score)) : 0;
+  smoothedJawOpen += (rawJaw-smoothedJawOpen)*0.38;
+  const jawOpen = Math.max(0,Math.min(1,smoothedJawOpen));
+  const mouthScale = imagePreview.naturalHeight;
+  const upperLip = [13,312,311,310,415,308,78,191,80,81,82,185,40,39,37,267,269,270];
+  const lowerLip = [14,87,178,88,95,317,402,318,324,409];
+  const lowerIds = lowerLip.filter(i=>Number.isInteger(i) && mapped[i]);
+  const upperIds = upperLip.filter(i=>Number.isInteger(i) && mapped[i]);
+  // Move the lower lip down with the detected jaw opening; a little extra gain makes small speech motions visible.
+  const jawDrop = jawOpen * mouthScale * 0.075;
+  for (const i of lowerIds) mapped[i].y += jawDrop;
+  for (const i of upperIds) mapped[i].y -= jawOpen * mouthScale * 0.012;
+
+  for(const tri of meshTriangles) {
+    const src=tri.map(i=>({x:photoLandmarks[i].x*imagePreview.naturalWidth,y:photoLandmarks[i].y*imagePreview.naturalHeight}));
+    const dst=tri.map(i=>({x:mapped[i].x*w/imagePreview.naturalWidth,y:mapped[i].y*h/imagePreview.naturalHeight}));
+    const [a,b,c]=src,[A,B,C]=dst;
+    const den=a.x*(b.y-c.y)+b.x*(c.y-a.y)+c.x*(a.y-b.y);
+    if(Math.abs(den)<0.0001) continue;
+    const m11=(A.x*(b.y-c.y)+B.x*(c.y-a.y)+C.x*(a.y-b.y))/den;
+    const m12=(A.x*(c.x-b.x)+B.x*(a.x-c.x)+C.x*(b.x-a.x))/den;
+    const m21=(A.y*(b.y-c.y)+B.y*(c.y-a.y)+C.y*(a.y-b.y))/den;
+    const m22=(A.y*(c.x-b.x)+B.y*(a.x-c.x)+C.y*(b.x-a.x))/den;
+    const dx=A.x-m11*a.x-m12*a.y,dy=A.y-m21*a.x-m22*a.y;
+    resultCtx.save();
+    resultCtx.beginPath(); resultCtx.moveTo(A.x,A.y); resultCtx.lineTo(B.x,B.y); resultCtx.lineTo(C.x,C.y); resultCtx.closePath(); resultCtx.clip();
+    resultCtx.setTransform(m11,m21,m12,m22,dx,dy);
+    resultCtx.drawImage(imagePreview,0,0);
+    resultCtx.restore();
+  }
+}
+function drawLandmarks(ctx, landmarks, width, height) {
+  ctx.clearRect(0, 0, width, height);
+  if (!landmarks) return;
+  ctx.fillStyle = "#00ff88";
+  for (const point of landmarks) {
+    ctx.beginPath();
+    ctx.arc(point.x * width, point.y * height, 1.6, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+document.getElementById("photo").addEventListener("change", async event => {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+  if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+    photoStatus.textContent = "Please choose a JPG, PNG, or WebP image.";
+    event.target.value = "";
+    return;
+  }
+  if (file.size > 12 * 1024 * 1024) {
+    photoStatus.textContent = "That image is larger than 12 MB. Please choose a smaller photo.";
+    event.target.value = "";
+    return;
+  }
+  if (photoUrl) URL.revokeObjectURL(photoUrl);
+  photoUrl = URL.createObjectURL(file);
+  imagePreview.hidden = false;
+  imagePreview.onload = async () => {
+    const width = imagePreview.naturalWidth;
+    const height = imagePreview.naturalHeight;
+    photoCanvas.width = width;
+    photoCanvas.height = height;
+    photoCanvas.style.aspectRatio = width + " / " + height;
+    // Match the large output canvas to the uploaded portrait's original proportions.
+    const outputScale = Math.min(1, 1200 / Math.max(width, height));
+    resultCanvas.width = Math.max(1, Math.round(width * outputScale));
+    resultCanvas.height = Math.max(1, Math.round(height * outputScale));
+    resultCanvas.style.aspectRatio = width + " / " + height;
+    resultCanvas.style.height = "auto";
+    resultCtx.clearRect(0, 0, resultCanvas.width, resultCanvas.height);
+    resultCtx.drawImage(imagePreview, 0, 0, resultCanvas.width, resultCanvas.height);
+    photoStatus.textContent = "Photo loaded. Start AI tracking to analyze the uploaded face.";
+    if (trackerReady) analyzeUploadedPhoto();
+  };
+  imagePreview.src = photoUrl;
+});
+
+function analyzeUploadedPhoto() {
+  if (!trackerReady || imagePreview.hidden || !imagePreview.complete) return;
+  try {
+    const result = detectPhoto(imagePreview);
+    if (result && result.faceLandmarks && result.faceLandmarks.length) {
+      photoLandmarks = result.faceLandmarks[0];
+      // Draw the detector result first so triangulation cannot prevent face confirmation.
+      drawLandmarks(photoCtx, photoLandmarks, photoCanvas.width, photoCanvas.height);
+      try {
+        meshTriangles = triangulate(photoLandmarks);
+      } catch (meshError) {
+        console.warn("Face mesh triangulation failed:", meshError);
+        meshTriangles = [];
+      }
+      photoStatus.textContent = "Face detected in uploaded photo (" + photoLandmarks.length + " landmarks).";
+    } else {
+      photoLandmarks = null;
+      meshTriangles = null;
+      photoCtx.clearRect(0, 0, photoCanvas.width, photoCanvas.height);
+      resultCtx.clearRect(0, 0, resultCanvas.width, resultCanvas.height);
+      photoStatus.textContent = "No face detected. Try a clearer, well-lit photo with the face visible.";
+    }
+  } catch (error) {
+    console.error(error);
+    photoStatus.textContent = "Photo analysis error: " + (error && error.message ? error.message : String(error)) + ". Try a JPG or PNG with one clear, front-facing face.";
+    status.textContent = "Photo analysis failed. See the message under Uploaded Photo.";
+  }
+}
 
 document.getElementById("startCamera").onclick = async () => {
   try {
     status.textContent = "Starting camera...";
-
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        width: { ideal: 320 },
-        height: { ideal: 240 },
-        frameRate: { ideal: 15, max: 15 }
-      },
-      audio: false
-    });
-
-    camera.srcObject = stream;
-    await camera.play();
-
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      throw new Error("Camera access requires HTTPS or localhost.");
+    }
+    if (!stream) {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 480, max: 640 }, height: { ideal: 360, max: 480 }, frameRate: { ideal: 15, max: 20 }, facingMode: "user" },
+        audio: false
+      });
+      camera.srcObject = stream;
+      await camera.play();
+    }
     status.textContent = "Loading AI face tracker...";
-
-    const ready = await initializeFaceTracking();
-
-    if (!ready) return;
-
+    trackerReady = await initializeFaceTracking();
+    if (!trackerReady) return;
+    try {
+      motionTrackerReady = await initializeMotionTracking();
+      bodyStatus.textContent = "Full-body tracker ready. Stand back and move in view of the camera.";
+    } catch (motionError) {
+      console.warn("Body tracker could not initialize:", motionError);
+      bodyStatus.textContent = "Body tracking could not start: " + motionError.message;
+    }
+    analyzeUploadedPhoto();
     running = true;
-    status.textContent = "AI TRACKING ACTIVE!";
-
+    status.textContent = "AI tracking active. Looking for your face...";
     detectLoop();
-
   } catch (error) {
     console.error(error);
-    status.textContent = "Error: " + error.message;
+    status.textContent = "Camera error: " + error.message;
   }
 };
 
 function detectLoop() {
   if (!running) return;
-
-  if (camera.readyState >= 2) {
+  if (camera.readyState >= 2 && camera.videoWidth && camera.videoHeight) {
     const width = camera.videoWidth;
     const height = camera.videoHeight;
-
-    if (width && height) {
-      if (canvas.width !== width || canvas.height !== height) {
-        canvas.width = width;
-        canvas.height = height;
-      }
-
-      ctx.clearRect(0, 0, width, height);
-
+    if (trackingCanvas.width !== width || trackingCanvas.height !== height) {
+      trackingCanvas.width = width;
+      trackingCanvas.height = height;
+    }
+    if (motionTrackerReady) {
       try {
-        const result = trackFace(camera);
-
-        if (result && result.faceLandmarks &&
-            result.faceLandmarks.length > 0) {
-
-          const points = result.faceLandmarks[0];
-
-          ctx.fillStyle = "#00ff88";
-
-          for (const point of points) {
-            ctx.beginPath();
-            ctx.arc(
-              point.x * width,
-              point.y * height,
-              1.5,
-              0,
-              Math.PI * 2
-            );
-            ctx.fill();
-          }
-
-          status.textContent =
-            "FACE DETECTED! " + points.length +
-            " tracking points.";
-        } else {
-          status.textContent = "Looking for a face...";
+        const bodyResult = trackBody(camera, performance.now());
+        if (bodyCanvas.width !== width || bodyCanvas.height !== height) {
+          bodyCanvas.width = width;
+          bodyCanvas.height = height;
         }
-
-      } catch (error) {
-        console.error(error);
-        status.textContent = "Tracking error: " + error.message;
-        running = false;
-        return;
+        drawBodyPose(bodyCtx, bodyResult && bodyResult.landmarks, width, height);
+        bodyStatus.textContent = bodyResult && bodyResult.landmarks && bodyResult.landmarks.length
+          ? "Live body detected. Green lines show your body movement."
+          : "Looking for your full body — move farther from the camera if needed.";
+      } catch (bodyError) {
+        bodyStatus.textContent = "Body tracking issue: " + bodyError.message;
       }
     }
+    try {
+      const result = trackFace(camera);
+      if (result && result.faceLandmarks && result.faceLandmarks.length) {
+        drawLandmarks(trackingCtx, result.faceLandmarks[0], width, height);
+        // Keep output dimensions tied to the uploaded photo so its full body framing stays visible.
+        if (!resultCanvas.width || !resultCanvas.height) {
+          resultCanvas.width = imagePreview.naturalWidth;
+          resultCanvas.height = imagePreview.naturalHeight;
+        }
+        drawWarpedFace(result.faceLandmarks[0], result.faceBlendshapes && result.faceBlendshapes[0] ? result.faceBlendshapes[0].categories : []);
+        status.textContent = "Your face is detected — " + result.faceLandmarks[0].length + " tracking points.";
+      } else {
+        trackingCtx.clearRect(0, 0, width, height);
+        resultCtx.clearRect(0, 0, resultCanvas.width, resultCanvas.height);
+        smoothedLandmarks = null;
+        smoothedJawOpen = 0;
+        neutralFaceBox = null;
+        status.textContent = "Looking for your face...";
+      }
+    } catch (error) {
+      console.error(error);
+      status.textContent = "Tracking error: " + error.message;
+      running = false;
+      return;
+    }
   }
-
   requestAnimationFrame(detectLoop);
 }
 
+document.getElementById("motionVideoFile").addEventListener("change", event => {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+  if (!file.type.startsWith("video/")) {
+    videoMotionStatus.textContent = "Please choose a video file.";
+    event.target.value = "";
+    return;
+  }
+  if (file.size > 100 * 1024 * 1024) {
+    videoMotionStatus.textContent = "Please choose a video smaller than 100 MB for this low-memory version.";
+    event.target.value = "";
+    return;
+  }
+  if (motionVideoUrl) URL.revokeObjectURL(motionVideoUrl);
+  motionVideoUrl = URL.createObjectURL(file);
+  motionVideo.src = motionVideoUrl;
+  videoMotionStatus.textContent = "Video loaded. Press play to analyze its movement.";
+});
+motionVideo.addEventListener("loadedmetadata", () => {
+  videoBodyCanvas.width = motionVideo.videoWidth;
+  videoBodyCanvas.height = motionVideo.videoHeight;
+  videoBodyCanvas.style.aspectRatio = motionVideo.videoWidth + " / " + motionVideo.videoHeight;
+});
+motionVideo.addEventListener("play", async () => {
+  if (!motionTrackerReady) {
+    videoMotionStatus.textContent = "Loading the free body-tracking model...";
+    try {
+      motionTrackerReady = await initializeMotionTracking();
+    } catch (error) {
+      videoMotionStatus.textContent = "Could not load body tracking: " + error.message;
+      return;
+    }
+  }
+  const processMotionVideo = () => {
+    if (motionVideo.paused || motionVideo.ended) return;
+    if (motionTrackerReady && motionVideo.readyState >= 2) {
+      try {
+        const result = trackMotionVideo(motionVideo, performance.now());
+        drawBodyPose(videoBodyCtx, result && result.landmarks, videoBodyCanvas.width, videoBodyCanvas.height);
+        videoMotionStatus.textContent = result && result.landmarks && result.landmarks.length
+          ? "Movement detected. This is the extracted pose preview, not yet a generated photo animation."
+          : "Searching for a visible person in the video...";
+      } catch (error) {
+        videoMotionStatus.textContent = "Video tracking issue: " + error.message;
+      }
+    }
+    requestAnimationFrame(processMotionVideo);
+  };
+  requestAnimationFrame(processMotionVideo);
+});
+motionVideo.addEventListener("pause", () => videoBodyCtx.clearRect(0,0,videoBodyCanvas.width,videoBodyCanvas.height));
 document.getElementById("stopCamera").onclick = () => {
   running = false;
-
   if (stream) {
     stream.getTracks().forEach(track => track.stop());
     stream = null;
   }
-
   camera.srcObject = null;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
+  trackingCtx.clearRect(0, 0, trackingCanvas.width, trackingCanvas.height);
+  bodyCtx.clearRect(0, 0, bodyCanvas.width, bodyCanvas.height);
+  resultCtx.clearRect(0, 0, resultCanvas.width, resultCanvas.height);
   status.textContent = "Camera stopped.";
 };
 
+window.addEventListener("beforeunload", () => {
+  if (photoUrl) URL.revokeObjectURL(photoUrl);
+  if (motionVideoUrl) URL.revokeObjectURL(motionVideoUrl);
+  if (stream) stream.getTracks().forEach(track => track.stop());
+});
 </script>
-
 </body>
 </html>
