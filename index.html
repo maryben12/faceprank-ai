@@ -18,6 +18,7 @@ button { background:#7465ed; color:white; border:0; padding:13px 20px; margin:8p
 img, video { display:block; width:100%; height:auto; border-radius:12px; }
 #resultCanvas { position:relative; inset:auto; display:block; width:100%; height:auto; max-height:760px; object-fit:contain; margin:0 auto; pointer-events:none; }
 .media-wrap canvas:not(#resultCanvas) { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+#bodyCanvas, #videoBodyCanvas { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
 #status { color:#55edaa; min-height:22px; }
 .hint { color:#c8c9d8; font-size:14px; line-height:1.5; }
 @media (max-width:700px) {
@@ -49,6 +50,7 @@ img, video { display:block; width:100%; height:auto; border-radius:12px; }
       <div class="media-wrap">
         <video id="camera" autoplay muted playsinline></video>
         <canvas id="trackingCanvas"></canvas>
+        <canvas id="bodyCanvas"></canvas>
       </div>
       <p class="hint">Green dots show detected facial landmarks.</p>
     </div>
@@ -64,12 +66,36 @@ img, video { display:block; width:100%; height:auto; border-radius:12px; }
   <p id="status">Upload a photo, then start tracking.</p>
   <p class="hint">Photos are processed in your browser and are not uploaded to a server. Use photos with permission and clearly disclose any AI-manipulated output.</p>
 </div>
+<div class="container">
+  <h2>3. Full-Body Motion Studio (Free Beta)</h2>
+  <p class="hint">Live mode tracks your body in real time. Video mode extracts body movement from a driving video. This beta shows motion tracking; realistic full-body photo animation requires a separate generative video engine.</p>
+  <h3>Live Full-Body Webcam</h3>
+  <p class="hint">Start AI Tracking above, then stand back so your full body is visible.</p>
+  <p id="bodyStatus" class="hint">Body tracker will initialize when you start the camera.</p>
+  <h3>Video Motion Capture</h3>
+  <input type="file" id="motionVideoFile" accept="video/*">
+  <div class="media-wrap" style="max-width:720px;margin:12px auto">
+    <video id="motionVideo" controls playsinline></video>
+    <canvas id="videoBodyCanvas"></canvas>
+  </div>
+  <p id="videoMotionStatus" class="hint">Upload a video to preview its body movement.</p>
+</div>
 <script type="module">
 import { initializeFaceTracking, trackFace, detectPhoto } from "./face.js";
+import { initializeMotionTracking, trackBody, trackMotionVideo, drawBodyPose } from "./motion.js";
 
 const camera = document.getElementById("camera");
 const trackingCanvas = document.getElementById("trackingCanvas");
 const trackingCtx = trackingCanvas.getContext("2d");
+const bodyCanvas = document.getElementById("bodyCanvas");
+const bodyCtx = bodyCanvas.getContext("2d");
+const motionVideo = document.getElementById("motionVideo");
+const videoBodyCanvas = document.getElementById("videoBodyCanvas");
+const videoBodyCtx = videoBodyCanvas.getContext("2d");
+const bodyStatus = document.getElementById("bodyStatus");
+const videoMotionStatus = document.getElementById("videoMotionStatus");
+let motionTrackerReady = false;
+let motionVideoUrl = null;
 const photoCanvas = document.getElementById("photoCanvas");
 const photoCtx = photoCanvas.getContext("2d");
 const resultCanvas = document.getElementById("resultCanvas");
@@ -307,6 +333,13 @@ document.getElementById("startCamera").onclick = async () => {
     status.textContent = "Loading AI face tracker...";
     trackerReady = await initializeFaceTracking();
     if (!trackerReady) return;
+    try {
+      motionTrackerReady = await initializeMotionTracking();
+      bodyStatus.textContent = "Full-body tracker ready. Stand back and move in view of the camera.";
+    } catch (motionError) {
+      console.warn("Body tracker could not initialize:", motionError);
+      bodyStatus.textContent = "Body tracking could not start: " + motionError.message;
+    }
     analyzeUploadedPhoto();
     running = true;
     status.textContent = "AI tracking active. Looking for your face...";
@@ -325,6 +358,21 @@ function detectLoop() {
     if (trackingCanvas.width !== width || trackingCanvas.height !== height) {
       trackingCanvas.width = width;
       trackingCanvas.height = height;
+    }
+    if (motionTrackerReady) {
+      try {
+        const bodyResult = trackBody(camera, performance.now());
+        if (bodyCanvas.width !== width || bodyCanvas.height !== height) {
+          bodyCanvas.width = width;
+          bodyCanvas.height = height;
+        }
+        drawBodyPose(bodyCtx, bodyResult && bodyResult.landmarks, width, height);
+        bodyStatus.textContent = bodyResult && bodyResult.landmarks && bodyResult.landmarks.length
+          ? "Live body detected. Green lines show your body movement."
+          : "Looking for your full body — move farther from the camera if needed.";
+      } catch (bodyError) {
+        bodyStatus.textContent = "Body tracking issue: " + bodyError.message;
+      }
     }
     try {
       const result = trackFace(camera);
@@ -355,6 +403,40 @@ function detectLoop() {
   requestAnimationFrame(detectLoop);
 }
 
+document.getElementById("motionVideoFile").addEventListener("change", event => {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+  if (motionVideoUrl) URL.revokeObjectURL(motionVideoUrl);
+  motionVideoUrl = URL.createObjectURL(file);
+  motionVideo.src = motionVideoUrl;
+  videoMotionStatus.textContent = "Video loaded. Press play to analyze its movement.";
+});
+motionVideo.addEventListener("loadedmetadata", () => {
+  videoBodyCanvas.width = motionVideo.videoWidth;
+  videoBodyCanvas.height = motionVideo.videoHeight;
+  videoBodyCanvas.style.aspectRatio = motionVideo.videoWidth + " / " + motionVideo.videoHeight;
+});
+motionVideo.addEventListener("play", () => {
+  const processMotionVideo = () => {
+    if (motionVideo.paused || motionVideo.ended) return;
+    if (motionTrackerReady && motionVideo.readyState >= 2) {
+      try {
+        const result = trackMotionVideo(motionVideo, performance.now());
+        drawBodyPose(videoBodyCtx, result && result.landmarks, videoBodyCanvas.width, videoBodyCanvas.height);
+        videoMotionStatus.textContent = result && result.landmarks && result.landmarks.length
+          ? "Movement detected. This is the extracted pose preview, not yet a generated photo animation."
+          : "Searching for a visible person in the video...";
+      } catch (error) {
+        videoMotionStatus.textContent = "Video tracking issue: " + error.message;
+      }
+    } else if (!motionTrackerReady) {
+      videoMotionStatus.textContent = "Start AI Tracking above first to initialize the free body tracker.";
+    }
+    requestAnimationFrame(processMotionVideo);
+  };
+  requestAnimationFrame(processMotionVideo);
+});
+motionVideo.addEventListener("pause", () => videoBodyCtx.clearRect(0,0,videoBodyCanvas.width,videoBodyCanvas.height));
 document.getElementById("stopCamera").onclick = () => {
   running = false;
   if (stream) {
@@ -363,12 +445,14 @@ document.getElementById("stopCamera").onclick = () => {
   }
   camera.srcObject = null;
   trackingCtx.clearRect(0, 0, trackingCanvas.width, trackingCanvas.height);
+  bodyCtx.clearRect(0, 0, bodyCanvas.width, bodyCanvas.height);
   resultCtx.clearRect(0, 0, resultCanvas.width, resultCanvas.height);
   status.textContent = "Camera stopped.";
 };
 
 window.addEventListener("beforeunload", () => {
   if (photoUrl) URL.revokeObjectURL(photoUrl);
+  if (motionVideoUrl) URL.revokeObjectURL(motionVideoUrl);
   if (stream) stream.getTracks().forEach(track => track.stop());
 });
 </script>
