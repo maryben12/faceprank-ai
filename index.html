@@ -81,6 +81,13 @@ img, video { display:block; width:100%; height:auto; border-radius:12px; }
   <p id="videoMotionStatus" class="hint">Upload a video to preview its body movement.</p>
   <button id="exportMotion" disabled>Export Tracked Movement</button>
   <p id="exportMotionStatus" class="hint">Play the video to collect movement data. Export becomes available after tracking detects movement.</p>
+  <h3>4. Motion Replay Preview</h3>
+  <p class="hint">Load the JSON movement file you exported. This preview places the tracked pose over your photo so we can check alignment. It is a prototype preview, not yet a realistic animated-person video.</p>
+  <input type="file" id="motionDataFile" accept=".json,application/json">
+  <div class="media-wrap" style="max-width:720px;margin:12px auto"><canvas id="motionReplayCanvas" style="display:block;width:100%;height:auto"></canvas></div>
+  <button id="playMotionReplay" disabled>Play Motion Preview</button>
+  <button id="pauseMotionReplay" disabled>Pause Preview</button>
+  <p id="motionReplayStatus" class="hint">Upload your faceprank-motion-data.json file to preview its movement over the photo.</p>
 </div>
 <script type="module">
 import { initializeFaceTracking, trackFace, detectPhoto } from "./face.js";
@@ -96,6 +103,12 @@ const videoBodyCanvas = document.getElementById("videoBodyCanvas");
 const videoBodyCtx = videoBodyCanvas.getContext("2d");
 const bodyStatus = document.getElementById("bodyStatus");
 const videoMotionStatus = document.getElementById("videoMotionStatus");
+const motionReplayCanvas = document.getElementById("motionReplayCanvas");
+const motionReplayCtx = motionReplayCanvas.getContext("2d");
+const motionReplayStatus = document.getElementById("motionReplayStatus");
+let replayFrames = [];
+let replayIndex = 0;
+let replayTimer = null;
 let motionTrackerReady = false;
 let motionVideoUrl = null;
 let capturedMotionFrames = [];
@@ -482,6 +495,83 @@ document.getElementById("exportMotion").addEventListener("click", () => {
   URL.revokeObjectURL(url);
   document.getElementById("exportMotionStatus").textContent = "Movement data downloaded. This file can be used by a future animation engine; it is not an MP4 video.";
 });
+
+function drawMotionReplayFrame(index) {
+  if (!imagePreview || imagePreview.hidden || !imagePreview.complete || !imagePreview.naturalWidth) {
+    motionReplayStatus.textContent = "Upload your photo first, then load the movement JSON.";
+    return;
+  }
+  const frame = replayFrames[index];
+  if (!frame || !Array.isArray(frame.landmarks) || !frame.landmarks.length) return;
+  const width = Math.min(720, imagePreview.naturalWidth);
+  const height = Math.round(width * imagePreview.naturalHeight / imagePreview.naturalWidth);
+  motionReplayCanvas.width = width;
+  motionReplayCanvas.height = height;
+  motionReplayCtx.clearRect(0, 0, width, height);
+  motionReplayCtx.drawImage(imagePreview, 0, 0, width, height);
+  const points = frame.landmarks;
+  const visible = points.filter(p => p && Number.isFinite(p.x) && Number.isFinite(p.y) && (p.visibility ?? 1) > 0.35);
+  if (visible.length) {
+    const minX = Math.min(...visible.map(p => p.x)), maxX = Math.max(...visible.map(p => p.x));
+    const minY = Math.min(...visible.map(p => p.y)), maxY = Math.max(...visible.map(p => p.y));
+    const spanX = Math.max(0.001, maxX - minX), spanY = Math.max(0.001, maxY - minY);
+    // Fit the tracked person's pose into the portrait canvas with modest margins.
+    const scale = Math.min(width * 0.72 / spanX, height * 0.72 / spanY);
+    const offsetX = width / 2 - ((minX + maxX) / 2) * scale;
+    const offsetY = height / 2 - ((minY + maxY) / 2) * scale;
+    const links = [[11,12],[11,13],[13,15],[12,14],[14,16],[11,23],[12,24],[23,24],[23,25],[25,27],[27,29],[29,31],[24,26],[26,28],[28,30],[30,32]];
+    motionReplayCtx.lineWidth = Math.max(2, width / 220);
+    motionReplayCtx.strokeStyle = "#39e6b0";
+    motionReplayCtx.fillStyle = "#ffe36e";
+    for (const [a,b] of links) {
+      const p = points[a], q = points[b];
+      if (!p || !q || (p.visibility ?? 1) <= 0.35 || (q.visibility ?? 1) <= 0.35) continue;
+      motionReplayCtx.beginPath();
+      motionReplayCtx.moveTo(offsetX + p.x * scale, offsetY + p.y * scale);
+      motionReplayCtx.lineTo(offsetX + q.x * scale, offsetY + q.y * scale);
+      motionReplayCtx.stroke();
+    }
+    for (const p of visible) {
+      motionReplayCtx.beginPath();
+      motionReplayCtx.arc(offsetX + p.x * scale, offsetY + p.y * scale, Math.max(3,width/150), 0, Math.PI*2);
+      motionReplayCtx.fill();
+    }
+  }
+  motionReplayStatus.textContent = "Preview frame " + (index + 1) + " of " + replayFrames.length + ". Green lines show the recorded body pose over your photo; the photo pixels are not being deformed yet.";
+}
+document.getElementById("motionDataFile").addEventListener("change", async event => {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+  try {
+    const data = JSON.parse(await file.text());
+    if (data.format !== "FacePrankAI-motion-v1" || !Array.isArray(data.frames) || !data.frames.length) {
+      throw new Error("This is not a valid FacePrank AI motion export.");
+    }
+    replayFrames = data.frames.filter(f => f && Array.isArray(f.landmarks) && f.landmarks.length >= 33);
+    if (!replayFrames.length) throw new Error("No usable body movement frames were found.");
+    replayIndex = 0;
+    document.getElementById("playMotionReplay").disabled = false;
+    document.getElementById("pauseMotionReplay").disabled = false;
+    drawMotionReplayFrame(0);
+  } catch (error) {
+    motionReplayStatus.textContent = "Could not load movement file: " + error.message;
+  }
+});
+document.getElementById("playMotionReplay").addEventListener("click", () => {
+  if (!replayFrames.length) return;
+  if (replayTimer) clearInterval(replayTimer);
+  drawMotionReplayFrame(replayIndex);
+  replayTimer = setInterval(() => {
+    replayIndex = (replayIndex + 1) % replayFrames.length;
+    drawMotionReplayFrame(replayIndex);
+  }, 100);
+});
+document.getElementById("pauseMotionReplay").addEventListener("click", () => {
+  if (replayTimer) clearInterval(replayTimer);
+  replayTimer = null;
+  motionReplayStatus.textContent = "Motion preview paused at frame " + (replayIndex + 1) + ".";
+});
+
 document.getElementById("stopCamera").onclick = () => {
   running = false;
   if (stream) {
